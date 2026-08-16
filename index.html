@@ -2,22 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>2択あみだくじ</title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#f7f7f7;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:#222}
+*{box-sizing:border-box}body{margin:0;background:#f7f7f7;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:#222}
 .wrap{max-width:480px;margin:auto;padding:24px 18px 32px;text-align:center}
 h1{font-size:25px;margin:8px 0}.sub{color:#666;margin:0 0 22px}
-.choices{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}
-.choice{border:0;border-radius:18px;background:#fff;padding:20px 10px;font-size:26px;font-weight:700;box-shadow:0 3px 12px #00000012}
-.choice:active{transform:scale(.97)}.choice:disabled{opacity:.45}
-#draw{background:#fff;border-radius:20px;padding:14px 10px 18px;box-shadow:0 3px 12px #00000012}
-canvas{width:100%;height:auto;display:block}
-.result{font-size:26px;font-weight:800;margin-top:14px;min-height:38px}
-.small{color:#777;font-size:13px;margin-top:10px}
-.again{margin-top:18px;border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px 18px;font-size:16px}
-.hidden{display:none}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:14px}.choice{border:0;border-radius:18px;background:#fff;padding:20px 10px;font-size:26px;font-weight:700;box-shadow:0 3px 12px #0001}
+.choice:disabled{opacity:.45}#draw{margin-top:22px;background:#fff;border-radius:20px;padding:14px 10px 18px;box-shadow:0 3px 12px #0001}
+canvas{width:100%;height:auto}.result{font-size:27px;font-weight:800;margin-top:12px;min-height:38px}.again{margin-top:18px;border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px 18px;font-size:16px}.hidden{display:none}
 </style>
 </head>
 <body>
@@ -31,106 +24,69 @@ canvas{width:100%;height:auto;display:block}
 <div id="draw" class="hidden">
 <canvas id="canvas" width="420" height="430"></canvas>
 <div id="result" class="result"></div>
-<div class="small">選んだ番号から、あみだをたどっています…</div>
 </div>
 <button id="again" class="again hidden">もう一度やる</button>
 </div>
 <script>
 (() => {
-const c1=document.getElementById('c1'), c2=document.getElementById('c2');
-const draw=document.getElementById('draw'), again=document.getElementById('again');
-const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
-const result=document.getElementById('result');
-const W=420,H=430,top=48,bottom=370,x=[130,290],rows=7;
-let mapping,chosen;
+const c1=document.getElementById('c1'),c2=document.getElementById('c2');
+const draw=document.getElementById('draw'),again=document.getElementById('again');
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),result=document.getElementById('result');
+const x=[130,290],top=48,bottom=370,mid=209;
 
-function newGame(){
-  // mapping[top column] = bottom column.
-  // Exactly one top choice is the winner, and the mapping is randomized.
-  // Bottom ② is the winner. Randomly decide which top choice leads to it.
-  mapping=Math.random()<0.5 ? [1,0] : [0,1];
-  chosen=null;
-  result.textContent='';
-  draw.classList.add('hidden'); again.classList.add('hidden');
+let winner; // 0=①, 1=②
+
+function reset(){
+  winner=Math.random()<0.5?0:1;
   c1.disabled=c2.disabled=false;
+  draw.classList.add('hidden');again.classList.add('hidden');result.textContent='';
 }
+function choose(chosen){
+  c1.disabled=c2.disabled=true;draw.classList.remove('hidden');
 
-function buildLinks(start,end){
-  // With two vertical lines, an odd number of crossings changes columns.
-  // Put a single crossing at the middle if a change is needed.
-  const links=Array(rows).fill(null);
-  if(start!==end) links[Math.floor(rows/2)]=0;
-  return links;
-}
+  // The chosen top line goes straight down until the crossing.
+  // If chosen is the winner, cross once; otherwise stay straight.
+  // Thus the red path always ends at the correct bottom label.
+  const cross = (chosen===winner);
+  const end = cross ? 1-chosen : chosen;
 
-function trace(start,links){
-  let col=start;
-  const pts=[{x:x[col],y:top}];
-  const ys=[];
-  for(let r=0;r<rows;r++) ys.push(top+(r+1)*(bottom-top)/(rows+1));
-  for(let r=0;r<rows;r++){
-    const y=ys[r];
-    pts.push({x:x[col],y});
-    if(links[r]!==null){
-      pts.push({x:x[col===0?1:0],y});
-      col=1-col;
-    }
+  ctx.clearRect(0,0,420,430);
+  ctx.lineWidth=5;ctx.lineCap='round';ctx.strokeStyle='#333';
+
+  // vertical lines
+  for(const xx of x){ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);ctx.stroke()}
+
+  // One horizontal rung placed only when needed.
+  if(cross){
+    ctx.beginPath();ctx.moveTo(x[0],mid);ctx.lineTo(x[1],mid);ctx.stroke();
   }
-  pts.push({x:x[col],y:bottom});
-  return {pts,end:col,ys};
-}
 
-function drawLadder(start){
-  const end=mapping[start];
-  const links=buildLinks(start,end);
-  const t=trace(start,links);
-
-  ctx.clearRect(0,0,W,H);
-  ctx.lineWidth=5;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#333';
-  for(const xx of x){
-    ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);ctx.stroke();
-  }
-  links.forEach((link,r)=>{
-    if(link!==null){
-      const y=t.ys[r];
-      ctx.beginPath();ctx.moveTo(x[0],y);ctx.lineTo(x[1],y);ctx.stroke();
-    }
-  });
-
-  ctx.fillStyle='#333';ctx.font='bold 24px sans-serif';ctx.textAlign='center';
+  ctx.fillStyle='#333';ctx.textAlign='center';ctx.font='bold 24px sans-serif';
   ctx.fillText('①',x[0],25);ctx.fillText('②',x[1],25);
   ctx.font='bold 20px sans-serif';
-  ctx.fillText('😈 はずれ',x[0],408);
-  ctx.fillText('🎉 あたり',x[1],408);
+  ctx.fillText('😈 はずれ',x[0],408);ctx.fillText('🎉 あたり',x[1],408);
 
-  animate(t.pts, end===1);
-}
+  // Animate the selected route.
+  const pts=cross
+    ? [{x:x[chosen],y:top},{x:x[chosen],y:mid},{x:x[end],y:mid},{x:x[end],y:bottom}]
+    : [{x:x[chosen],y:top},{x:x[chosen],y:bottom}];
 
-function animate(points,isWinner){
   let i=1,step=0;
-  ctx.lineWidth=9;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#e74c3c';
+  ctx.lineWidth=9;ctx.strokeStyle='#e74c3c';
   function frame(){
-    if(i>=points.length){
-      result.textContent=isWinner?'🎉 あたり！':'😂 はずれ！';
-      again.classList.remove('hidden');
-      return;
+    if(i>=pts.length){
+      // IMPORTANT: result is based on the hidden winner, not on a display label.
+      result.textContent=(chosen===winner)?'🎉 あたり！':'😂 はずれ！';
+      again.classList.remove('hidden');return;
     }
-    const a=points[i-1],b=points[i],len=Math.hypot(b.x-a.x,b.y-a.y);
-    step+=10;
-    const p=Math.min(1,step/len);
+    const a=pts[i-1],b=pts[i],len=Math.hypot(b.x-a.x,b.y-a.y);
+    step+=10;const p=Math.min(1,step/len);
     ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(a.x+(b.x-a.x)*p,a.y+(b.y-a.y)*p);ctx.stroke();
-    if(p>=1){i++;step=0}
-    requestAnimationFrame(frame);
+    if(p>=1){i++;step=0}requestAnimationFrame(frame);
   }
   frame();
 }
-
-function choose(n){
-  chosen=n;c1.disabled=c2.disabled=true;draw.classList.remove('hidden');
-  drawLadder(n);
-}
-c1.onclick=()=>choose(0);c2.onclick=()=>choose(1);again.onclick=newGame;
-newGame();
+c1.onclick=()=>choose(0);c2.onclick=()=>choose(1);again.onclick=reset;reset();
 })();
 </script>
 </body>
