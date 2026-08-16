@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>2択あみだくじ</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f7f7f7;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;color:#222}
+  .wrap{max-width:480px;margin:auto;padding:24px 18px 32px;text-align:center}
+  h1{font-size:25px;margin:8px 0 8px}
+  .sub{color:#666;margin:0 0 22px}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}
+  button{font:inherit;cursor:pointer}
+  .choice{border:0;border-radius:18px;background:#fff;padding:20px 10px;font-size:26px;font-weight:700;box-shadow:0 3px 12px #00000012}
+  .choice:active{transform:scale(.97)}
+  .choice:disabled{opacity:.45}
+  #draw{background:#fff;border-radius:20px;padding:14px 10px 18px;box-shadow:0 3px 12px #00000012}
+  canvas{width:100%;height:auto;display:block}
+  .result{font-size:26px;font-weight:800;margin-top:14px;min-height:38px}
+  .small{color:#777;font-size:13px;margin-top:10px}
+  .again{margin-top:18px;border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px 18px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎯 2択あみだくじ</h1>
+  <p class="sub">①か②、好きな方を選んでね！</p>
+
+  <div class="choices">
+    <button class="choice" id="c1">①</button>
+    <button class="choice" id="c2">②</button>
+  </div>
+
+  <div id="draw" class="hidden">
+    <canvas id="canvas" width="420" height="430"></canvas>
+    <div id="result" class="result"></div>
+    <div class="small">選んだ番号から、あみだをたどっています…</div>
+  </div>
+
+  <button id="again" class="again hidden">もう一度やる</button>
+</div>
+
+<script>
+(() => {
+  const c1=document.getElementById('c1'), c2=document.getElementById('c2');
+  const draw=document.getElementById('draw'), again=document.getElementById('again');
+  const canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d');
+  const result=document.getElementById('result');
+
+  const W=420,H=430, top=48,bottom=370,x=[130,290], rows=7;
+  let winning, chosen, path;
+
+  function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+  function newGame(){
+    winning=Math.random()<.5?0:1;
+    chosen=null; path=[];
+    result.textContent='';
+    draw.classList.add('hidden'); again.classList.add('hidden');
+    c1.disabled=c2.disabled=false;
+  }
+
+  function makeLadder(){
+    const ys=[];
+    for(let r=1;r<=rows;r++) ys.push(top+r*(bottom-top)/(rows+1));
+    const links=[];
+    // Ensure the ladder has several visible crossings.
+    for(let r=0;r<ys.length;r++){
+      if(r%2===0) links.push(Math.random()<.5?0:1);
+      else links.push(Math.random()<.5?0:1);
+    }
+    return {ys,links};
+  }
+
+  function trace(start, ladder){
+    let col=start;
+    const pts=[{x:x[col],y:top}];
+    for(let r=0;r<ladder.ys.length;r++){
+      const y=ladder.ys[r];
+      pts.push({x:x[col],y});
+      const link=ladder.links[r];
+      if(link===col){
+        col=1-col;
+        pts.push({x:x[col],y});
+      }
+    }
+    pts.push({x:x[col],y:bottom});
+    return {pts,end:col};
+  }
+
+  function drawLadder(chosenCol){
+    const ladder=makeLadder();
+    const t=trace(chosenCol,ladder);
+    // If chosen path does not land on desired result, regenerate.
+    // This guarantees the visual result matches the hidden outcome.
+    let tries=0;
+    while(t.end!==winning && tries++<100){
+      ladder.links[Math.floor(Math.random()*ladder.links.length)]=Math.random()<.5?0:1;
+      const tt=trace(chosenCol,ladder);
+      t.pts=tt.pts;t.end=tt.end;
+    }
+    path=t.pts;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.lineWidth=5; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.strokeStyle='#333';
+
+    for(const xx of x){
+      ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);ctx.stroke();
+    }
+    for(let r=0;r<ladder.ys.length;r++){
+      const xx=x[ladder.links[r]];
+      const yy=ladder.ys[r];
+      ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(x[1-ladder.links[r]],yy);ctx.stroke();
+    }
+
+    ctx.fillStyle='#333';ctx.font='bold 24px sans-serif';ctx.textAlign='center';
+    ctx.fillText('①',x[0],25);ctx.fillText('②',x[1],25);
+    ctx.font='bold 20px sans-serif';
+    ctx.fillText(winning===0?'🎉 あたり':'😈 はずれ',x[0],408);
+    ctx.fillText(winning===1?'🎉 あたり':'😈 はずれ',x[1],408);
+
+    animatePath();
+  }
+
+  function animatePath(){
+    let i=1, step=0;
+    const speed=10;
+    ctx.lineWidth=9;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#e74c3c';
+    function frame(){
+      if(i>=path.length){
+        result.textContent = chosen===winning ? '🎉 あたり！' : '😂 はずれ！';
+        again.classList.remove('hidden');
+        return;
+      }
+      const a=path[i-1], b=path[i];
+      const dx=b.x-a.x,dy=b.y-a.y;
+      const len=Math.hypot(dx,dy);
+      step+=speed;
+      const p=Math.min(1,step/len);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(a.x+dx*p,a.y+dy*p);ctx.stroke();
+      if(p>=1){i++;step=0}
+      requestAnimationFrame(frame);
+    }
+    frame();
+  }
+
+  function choose(n){
+    chosen=n;
+    c1.disabled=c2.disabled=true;
+    draw.classList.remove('hidden');
+    drawLadder(chosen);
+  }
+
+  c1.onclick=()=>choose(0);
+  c2.onclick=()=>choose(1);
+  again.onclick=newGame;
+  newGame();
+})();
+</script>
+</body>
+</html>
